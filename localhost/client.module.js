@@ -140,7 +140,7 @@ function f_b_proxify(value) {
   
         return value;
       },
-      set(o, s_property, value) {
+      async set(o, s_property, value) {
         const a_s_path_full = [...a_s_path, s_property];
         const oldValue = o[s_property];
         const newValue = value;
@@ -149,7 +149,7 @@ function f_b_proxify(value) {
         o[s_property] = value;
 
         if (oldValue !== newValue) {
-            callback(a_s_path_full, oldValue, newValue);
+            await callback(a_s_path_full, oldValue, newValue);
           }
 
         return true;
@@ -275,6 +275,7 @@ let o_state = f_o_proxified(
         console.log({
             a_o_el
         })
+        // debugger
         //document.querySelectorAll(`[s_prop_sync="${a_s_path.join('.')}"]`);
         // console.log(a_o_el)
         
@@ -303,12 +304,36 @@ let o_state = f_o_proxified(
             if(o_el?.o_meta?.f_a_o){
                 // console.log(o.o_meta)
                 // debugger
-                o.innerHTML = ''
-                let a_o = await o_el?.o_meta?.f_a_o();
-                for(let o_js2 of a_o){
-                    let o_html2 = await f_o_html(o_js2);
-                    o.appendChild(o_html2)
+                if(!o_el?.o_meta.hasOwnProperty('b_done')){
+                    o_el.o_meta.b_done = Promise.resolve('from above')
                 }
+                await o_el?.o_meta?.b_done;
+                o_el.innerHTML = ''
+                console.log(`starting: ${new Date().getTime()}`)
+                console.log(o_el.o_meta.b_done)
+                o_el.o_meta.b_done = new Promise(
+                    async (
+                    f_res, f_rej
+                )=>{
+                    let a_o_el2 = await o_el?.o_meta?.f_a_o();
+                    // while (o_el.firstChild) {
+                    //     o_el.removeChild(o_el.firstChild);
+                    // }
+                    o_el.innerHTML = ''
+
+                    // debugger
+                    console.log(a_o_el2)
+                    for(let n_idx in a_o_el2){
+                        let o_js2 = a_o_el2[n_idx];
+                        let o_html2 = await f_o_html(o_js2);
+                        o_el.appendChild(o_html2)
+                        console.log('appending child')
+                        console.log(o_html2)
+                    }
+                    console.log(`done: ${new Date().getTime()}`)
+                    return f_res(true)
+                })
+
 
             }
         }
@@ -316,12 +341,26 @@ let o_state = f_o_proxified(
 )
 window.o_state = o_state
 
+let f_sleep_ms = async function(n_ms){
+    return new Promise((f_res, f_rej)=>{
+        setTimeout(()=>{
+            return f_res(true)
+        },n_ms)
+    })
+}
 let o = await f_o_html(
     {
+        class: "test",
         f_a_o: ()=>{
             return [
                 {
-                    f_a_o: ()=>{
+                    innerText: "section 1"
+                },
+                {
+                    style: "background:red",
+                    f_a_o: async ()=>{
+                        await f_sleep_ms(1000);
+
                         return o_state.a_o_person.map(o=>{
                             return {
                                 f_a_o:()=>[
@@ -341,9 +380,13 @@ let o = await f_o_html(
                     s_prop_sync: "a_o_person"
                 },
                 {
+                    innerText: "section 2   "
+                },
+                {
                     f_a_o: ()=>{
                         return o_state.a_o_person.map(o=>{
                             return {
+                                style: `background: rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0.5)`,
                                 f_a_o:()=>[
                                     {
                                         f_s_innerText: ()=>`name is:${o.s_name} random number: ${Math.random()}`
@@ -371,13 +414,37 @@ document.body.appendChild(o)
 o_state.a_o_person.push(
     new O_person('ludolf', 20)
 )
-// o_state.a_o_person[0].s_name = 'asdf';
-// o_state.a_o_person[0].s_name = 'lol';
-// o_state.a_o_person[0] = {s_name: 'lol'}
+o_state.a_o_person.push(
+    new O_person(
+        'ueli', 
+        10, 
+        false, 
+        ['ul']
+    )
+)
+o_state.a_o_person[0].s_name = `${o_state.a_o_person[0].s_name}_new`
+o_state.a_o_person[1].s_name = `${o_state.a_o_person[1].s_name}_new`
+o_state.a_o_person[2] = {s_name: 'lol'}
 // let o_tmp = o_state.a_o_person[1];
 // o_tmp.s_name = 'kkl'
 // o_state.a_o_person.pop()
-// o_state.a_o_person.pop()
+window.setTimeout(()=>{
+    o_state.a_o_person.pop()
+    console.log('pop1')
+    console.log('nlen', o_state.a_o_person.length)
+    o_state.a_o_person.pop()
+    console.log('pop2')
+    console.log('nlen', o_state.a_o_person.length)
+    o_state.a_o_person.pop()
+    console.log('pop3')
+    console.log('nlen', o_state.a_o_person.length)
+    
+    // window.setTimeout(()=>{
+    //     o_state.a_o_person.pop()
+    //     // o_state.a_o_person.pop()
+    
+    // },1)
+},1111)
 
 // console.log(o.o_meta)
 // o.innerHTML = ''
