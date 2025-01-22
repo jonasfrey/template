@@ -113,52 +113,48 @@ function f_b_proxify(value) {
     return false;
   }
   
-  function f_o_proxified(target, a_s_path = [], callback) {
-    const o_handler = {
-      get(o, s_property) {
-        const value = o[s_property];
+  function f_o_proxified(obj, f_callback, path = []) {
+    let callbackQueue = Promise.resolve();
   
-        // Intercept array-mutating methods
-        if (Array.isArray(o) && ['push', 'pop', 'splice', 'shift', 'unshift'].includes(s_property)) {
-          return function (...args) {
-            const oldArray = [...o]; // Clone the current state of the array
-            const result = Array.prototype[s_property].apply(o, args); // Call the original method
-            callback([...a_s_path], oldArray, o); // Trigger callback with the old and new array
-            return result;
-          };
-        }
-  
-        // Bind DOM methods to their original context
-        if (typeof value === 'function') {
-          return value.bind(o);
-        }
-  
-        // Only proxy "plain data" objects
-        if (f_b_proxify(value)) {
-          return f_o_proxified(value, [...a_s_path, s_property], callback);
-        }
-  
-        return value;
-      },
-      async set(o, s_property, value) {
-        const a_s_path_full = [...a_s_path, s_property];
-        const oldValue = o[s_property];
-        const newValue = value;
-  
-        // Apply the change
-        o[s_property] = value;
-
-        if (oldValue !== newValue) {
-            await callback(a_s_path_full, oldValue, newValue);
-          }
-
-        return true;
-      },
+    const wrappedCallback = (fullPath, v_old, v_new) => {
+      callbackQueue = callbackQueue.then(() => f_callback(fullPath, v_old, v_new));
+      return callbackQueue;
     };
   
-    return new Proxy(target, o_handler);
+    function createProxy(target, currentPath) {
+      return new Proxy(target, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, receiver);
+          if (typeof value === 'object' && value !== null) {
+            // Create proxy for nested objects/arrays, including the path to this property
+            return createProxy(value, [...currentPath, prop]);
+          }
+          return value;
+        },
+        set(target, prop, value, receiver) {
+          const oldValue = Reflect.get(target, prop, receiver);
+          const result = Reflect.set(target, prop, value, receiver);
+          wrappedCallback([...currentPath, prop], oldValue, value);
+          return result;
+        },
+        deleteProperty(target, prop) {
+          const oldValue = Reflect.get(target, prop);
+          const result = Reflect.deleteProperty(target, prop);
+          wrappedCallback([...currentPath, prop], oldValue, undefined);
+          return result;
+        }
+      });
+    }
+  
+    return createProxy(obj, path);
   }
   
+  // Example usage:
+  const callback = async (target, path, value) => {
+    console.log(`Callback started for path: ${JSON.stringify(path)}, value:`, value);
+    await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate async operation
+    console.log(`Callback finished for path: ${JSON.stringify(path)}`);
+  };
   
   
     function setByPath(obj, path, value) {
@@ -251,28 +247,13 @@ let a_o_person = [
         ['gretchen', 'gretel']
     )
 ]
-let o_state = f_o_proxified(
-    {
-        o_person: a_o_person[0],
-        a_o_person, 
-        n_test: 1, 
-        n_1: 0.2, 
-        n_2: 0.5,
-        s_test: "test", 
-        b_test: true, 
-        f_test:()=>{return 'test function executed succesfully'},
-        a_o: [{n:1},{n:2}], 
-    },
-    [],
-    async (a_s_path, v_old, v_new) => {
-        console.log(
-            {
-                a_s_path, v_old, v_new
-            }
-        )
+let f_callback = async function(a_s_path, v_old, v_new){
+
+        console.log('proxy callback called')
     
         let a_o_el = f_a_o_html_object_from_path(a_s_path);
         console.log({
+            a_s_path,
             a_o_el
         })
         // debugger
@@ -304,41 +285,49 @@ let o_state = f_o_proxified(
             if(o_el?.o_meta?.f_a_o){
                 // console.log(o.o_meta)
                 // debugger
-                if(!o_el?.o_meta.hasOwnProperty('b_done')){
-                    o_el.o_meta.b_done = Promise.resolve('from above')
-                }
-                await o_el?.o_meta?.b_done;
-                o_el.innerHTML = ''
-                console.log(`starting: ${new Date().getTime()}`)
-                console.log(o_el.o_meta.b_done)
-                o_el.o_meta.b_done = new Promise(
-                    async (
-                    f_res, f_rej
-                )=>{
-                    let a_o_el2 = await o_el?.o_meta?.f_a_o();
-                    // while (o_el.firstChild) {
-                    //     o_el.removeChild(o_el.firstChild);
-                    // }
-                    o_el.innerHTML = ''
 
-                    // debugger
-                    console.log(a_o_el2)
-                    for(let n_idx in a_o_el2){
-                        let o_js2 = a_o_el2[n_idx];
-                        let o_html2 = await f_o_html(o_js2);
-                        o_el.appendChild(o_html2)
-                        console.log('appending child')
-                        console.log(o_html2)
-                    }
-                    console.log(`done: ${new Date().getTime()}`)
-                    return f_res(true)
-                })
+                o_el.innerHTML = ''
+                // console.log(`starting: ${new Date().getTime()}`)
+                // console.log(o_el.o_meta.b_done)
+
+                let a_o_el2 = await o_el?.o_meta?.f_a_o();
+                // while (o_el.firstChild) {
+                //     o_el.removeChild(o_el.firstChild);
+                // }
+                o_el.innerHTML = ''
+
+                // debugger
+                // console.log(a_o_el2)
+                for(let n_idx in a_o_el2){
+                    let o_js2 = a_o_el2[n_idx];
+                    let o_html2 = await f_o_html(o_js2);
+                    o_el.appendChild(o_html2)
+                    // console.log('appending child')
+                    // console.log(o_html2)
+                }
+                // console.log(`done: ${new Date().getTime()}`)
 
 
             }
         }
-    }
+    
+}
+let o_state = f_o_proxified(
+    {
+        o_person: a_o_person[0],
+        a_o_person, 
+        n_test: 1, 
+        n_1: 0.2, 
+        n_2: 0.5,
+        s_test: "test", 
+        b_test: true, 
+        f_test:()=>{return 'test function executed succesfully'},
+        a_o: [{n:1},{n:2}], 
+    },
+    f_callback,
+    []
 )
+
 window.o_state = o_state
 
 let f_sleep_ms = async function(n_ms){
@@ -428,23 +417,25 @@ o_state.a_o_person[2] = {s_name: 'lol'}
 // let o_tmp = o_state.a_o_person[1];
 // o_tmp.s_name = 'kkl'
 // o_state.a_o_person.pop()
+console.log(o_state.a_o_person)
+console.log(o_state.a_o_person)
+console.log(o_state.a_o_person)
+
 window.setTimeout(()=>{
-    o_state.a_o_person.pop()
     console.log('pop1')
-    console.log('nlen', o_state.a_o_person.length)
     o_state.a_o_person.pop()
     console.log('pop2')
-    console.log('nlen', o_state.a_o_person.length)
     o_state.a_o_person.pop()
     console.log('pop3')
-    console.log('nlen', o_state.a_o_person.length)
+    o_state.a_o_person.pop()
     
+    console.log(o_state.a_o_person)
     // window.setTimeout(()=>{
     //     o_state.a_o_person.pop()
     //     // o_state.a_o_person.pop()
     
     // },1)
-},1111)
+},3333)
 
 // console.log(o.o_meta)
 // o.innerHTML = ''
