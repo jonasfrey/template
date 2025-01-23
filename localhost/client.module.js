@@ -40,6 +40,7 @@ let f_o_html_element__from_s_tag = function(s_tag){
 
 }
 
+let o_el_global_event = null;
 
 let f_o_html = async function(
     o_js
@@ -122,8 +123,15 @@ function f_b_proxify(value) {
     };
   
     function createProxy(target, currentPath) {
-      return new Proxy(target, {
+      const proxy = new Proxy(target, {
         get(target, prop, receiver) {
+          // Handle the custom `_f_set_directly` method
+          if (prop === '_f_set_directly') {
+            return (prop, value) => {
+              Reflect.set(target, prop, value);
+            };
+          }
+  
           const value = Reflect.get(target, prop, receiver);
           if (typeof value === 'object' && value !== null) {
             // Create proxy for nested objects/arrays, including the path to this property
@@ -144,6 +152,8 @@ function f_b_proxify(value) {
           return result;
         }
       });
+  
+      return proxy;
     }
   
     return createProxy(obj, path);
@@ -157,31 +167,34 @@ function f_b_proxify(value) {
   };
   
   
-    function setByPath(obj, path, value) {
-      const pathParts = path.match(/([^[.\]]+)/g); // Split the path into parts (e.g., ['a', 'b', '3', 'c', 'd'])
-    
-      let current = obj;
-    
-      for (let i = 0; i < pathParts.length; i++) {
-        const part = pathParts[i];
-    
-        // If it's the last part, set the value
-        if (i === pathParts.length - 1) {
-          current[part] = value;
-          return;
-        }
-    
-        // Determine if the next level should be an array or object
-        const nextPart = pathParts[i + 1];
-        if (!current[part]) {
-          current[part] = /^\d+$/.test(nextPart) ? [] : {}; // Create array if next part is a number, otherwise create object
-        }
-    
-        current = current[part];
+  function f_o_from_path(obj, path) {
+    // Split the path into parts (e.g., 'a_o_person.3.o_arm_left.n_length_cm' -> ['a_o_person', '3', 'o_arm_left', 'n_length_cm'])
+    const parts = path.split('.');
+  
+    // Traverse the object to get the value at the specified path
+    let current = obj;
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part]; // Move deeper into the object
+      } else {
+        return undefined; // If any part of the path is invalid, return undefined
       }
     }
+  
+    return current; // Return the value at the specified path
+  }
 
+  let f_a_o_element_from_s_prop_path = function(s_prop_path){
+    // Select elements where 'b_test' is a distinct value in the a_s_prop_sync attribute
+        const elements = document.querySelectorAll(`[a_s_prop_sync*="${s_prop_path}"]`);
 
+        // Filter the results to ensure 'b_test' is a standalone value or part of a comma-separated list
+        const filteredElements = Array.from(elements).filter(el => {
+            const values = el.getAttribute('a_s_prop_sync').split(',');
+            return values.includes(s_prop_path);
+        });
+        return filteredElements;
+  }
     let f_a_o_html_object_from_path = function (path) {
         if (!Array.isArray(path) || path.length === 0) {
           throw new Error('Path must be a non-empty array');
@@ -201,7 +214,7 @@ function f_b_proxify(value) {
             let parentProperty = currentPath.pop(); // Get the parent array's name
             if (parentProperty) {
               // Query all elements matching the parent property
-              let parentElements = document.querySelectorAll(`[s_prop_sync="${parentProperty}"]`);
+              let parentElements = f_a_o_element_from_s_prop_path(parentProperty)
               parentElements.forEach(parentElement => {
                 // Check if the parent element has the specified index as a child
                 if (parentElement.children[property]) {
@@ -215,7 +228,7 @@ function f_b_proxify(value) {
             }
           } else {
             // Handle plain property
-            let elements = document.querySelectorAll(`[s_prop_sync="${property}"]`);
+            let elements = f_a_o_element_from_s_prop_path(property)//document.querySelectorAll(`[s_prop_sync="${property}"]`);
             if (elements.length > 0) {
               foundElements.push(...elements);
               return foundElements; // Return all matching objects
@@ -275,8 +288,11 @@ let f_callback = async function(a_s_path, v_old, v_new){
         // console.log(path)
         // debugger
         for(let o_el of a_o_el){
+            if(o_el == o_el_global_event){
+                continue
+            }
             if(o_el.value){
-                o_el.value = newValue
+                o_el.value = v_new
             }
             if(o_el?.o_meta?.f_s_innerText){
                 let s = o_el.o_meta.f_s_innerText();
@@ -348,7 +364,7 @@ let o = await f_o_html(
                 {
                     style: "background:red",
                     f_a_o: async ()=>{
-                        await f_sleep_ms(1000);
+                        await f_sleep_ms(111);
 
                         return o_state.a_o_person.map(o=>{
                             return {
@@ -366,7 +382,7 @@ let o = await f_o_html(
                             }
                         })
                     }, 
-                    s_prop_sync: "a_o_person"
+                    a_s_prop_sync: ["a_o_person"]
                 },
                 {
                     innerText: "section 2   "
@@ -390,8 +406,62 @@ let o = await f_o_html(
                             }
                         })
                     }, 
-                    s_prop_sync: "a_o_person"
-                } 
+                    a_s_prop_sync: ["a_o_person"]
+                }, 
+                {
+                    s_tag: "label", 
+                    f_s_innerText: ()=>{
+                        return `number: ${o_state.n_1.toFixed(2)}`
+                    },
+                    a_s_prop_sync: ["n_1"],
+
+                },
+                {
+                    s_tag: "input", 
+                    type: "range", 
+                    min: 0, 
+                    max: 1, 
+                    step: 0.01, 
+                    a_s_prop_sync: ["n_1"],
+                },
+                {
+                    s_tag: "input", 
+                    type: "range", 
+                    min: 0, 
+                    max: 1, 
+                    step: 0.01, 
+                    a_s_prop_sync: ["n_1"],
+                },
+                { s_tag: "label", innerText: 'name'},
+                {
+                    s_tag: "input", 
+                    type: "text", 
+                    a_s_prop_sync: ["s_test"],
+                },
+                { s_tag: "label",  innerText: 'b_test'},
+                {
+                    s_tag: "input", 
+                    type: "checkbox", 
+                    a_s_prop_sync: ["b_test"],
+                    style:`background: ${(o_state.b_test) ? 'green' : "red"}`
+                },
+                {
+                    s_tag: "label",
+                    a_s_prop_sync: ['s_test', 'b_test'], 
+                    // s_prop_sync: 'b_test',
+                    // s_prop_sync: "n_1",
+
+                    f_s_innerText: ()=>{
+                        return `string is ${o_state.s_test}, and boolean is ${o_state.b_test}`
+                    }
+                }, 
+                {
+                    s_tag: 'label', 
+                    f_s_innerText: ()=>{
+                        return JSON.stringify(o_state.a_o_person);
+                    }, 
+                    a_s_prop_sync: "a_o_person"
+                }
             ]
         }
     }
@@ -435,7 +505,7 @@ window.setTimeout(()=>{
     //     // o_state.a_o_person.pop()
     
     // },1)
-},3333)
+},111)
 
 // console.log(o.o_meta)
 // o.innerHTML = ''
@@ -444,3 +514,130 @@ window.setTimeout(()=>{
 //     let o_html2 = await f_o_html(o_js2);
 //     o.appendChild(o_html2)
 // }
+// List of common events you want to listen to
+
+  function isPrimitive(value) {
+    return (
+      value === null || // Check for null
+      (typeof value !== 'object' && typeof value !== 'function') // Check for primitives
+    );
+  }
+  
+  function getByPath(obj, path) {
+    const parts = path.split('.');
+    let current = obj;
+  
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part]; // Move deeper into the object
+      } else {
+        return undefined; // If any part of the path is invalid, return undefined
+      }
+    }
+  
+    return current; // Return the value at the specified path
+  }
+  
+  function setByPathWithType(obj, path, value) {
+    const parts = path.split('.');
+    let current = obj;
+  
+    // Traverse to the parent of the target property
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part]; // Move deeper into the object
+      } else {
+        throw new Error(`Invalid path: ${path}`); // If any part of the path is invalid, throw an error
+      }
+    }
+  
+    // Get the target property name (last part of the path)
+    const targetProp = parts[parts.length - 1];
+  
+    // Check if the target property exists
+    if (current && typeof current === 'object' && targetProp in current) {
+      const currentValue = current[targetProp];
+      const currentType = typeof currentValue;
+  
+      // Convert the new value to the same type as the current value
+      let newValue;
+      switch (currentType) {
+        case 'number':
+          newValue = Number(value);
+          if (isNaN(newValue)) {
+            throw new Error(`Cannot convert "${value}" to a number.`);
+          }
+          break;
+        case 'string':
+          newValue = String(value);
+          break;
+        case 'boolean':
+          newValue = Boolean(value);
+          break;
+        default:
+          throw new Error(`Unsupported type: ${currentType}`);
+      }
+  
+      // Set the new value
+      current[targetProp] = newValue;
+      console.log(`Value set successfully at path "${path}". New value:`, newValue);
+    } else {
+      throw new Error(`Property at path "${path}" does not exist.`);
+    }
+  }
+
+
+  // Function to be triggered when any input value changes
+function handleInputChange(event) {
+    o_el_global_event = event.target;
+
+    // console.log(`Event "${event.type}" triggered on:`, event.target);
+    let a_s_prop_sync = event.target.getAttribute('a_s_prop_sync')?.split(',');
+    if(a_s_prop_sync){
+        for(let s_prop_sync of a_s_prop_sync){
+            let a_s = s_prop_sync.split('.');
+            let value;
+            // Check if the input is a checkbox
+            if (event.target.type === 'checkbox') {
+                value = event.target.checked; // Use the checked property for checkboxes
+            } else {
+                value = event.target.value; // Use the value property for other input types
+            }
+            setByPathWithType(o_state, s_prop_sync,value)
+        }
+    }
+
+    console.log('Input value changed:', event.target.value);
+  }
+  
+  // Attach the event listener to all input elements
+  document.querySelectorAll('input, textarea, select').forEach((input) => {
+    input.addEventListener('input', handleInputChange);
+  });
+
+  //   const eventsToListen = [
+//     'click', 'dblclick', 'mousedown', 'mouseup', 'mousemove', 'mouseover', 'mouseout',
+//     'keydown', 'keyup', 'keypress', 'input', 'change', 'focus', 'blur', 'submit',
+//     'drag', 'dragstart', 'dragend', 'dragover', 'dragenter', 'dragleave', 'drop',
+//     'scroll', 'resize', 'load', 'unload', 'error', 'contextmenu', 'wheel', 'touchstart',
+//     'touchend', 'touchmove', 'touchcancel'
+//   ];
+//   // Attach event listeners to all elements
+//   function attachEventListeners() {
+//     const allElements = document.querySelectorAll('*');
+  
+//     allElements.forEach(element => {
+//       eventsToListen.forEach(eventType => {
+//         element.addEventListener(eventType, handleEvent);
+//       });
+//     });
+//   }
+//   attachEventListeners()
+
+//todo
+//when o_state.a_o_person[0].s_name = 'asdf' is changed
+// a_s_prop_sync : ['a_o_person'], those should be rendered after o_state.a_o_person[n].s_name  has experienced a change
+window.setTimeout(()=>{
+    o_state.a_o_person[0].s_name = 'Ulrich'
+},2000)
